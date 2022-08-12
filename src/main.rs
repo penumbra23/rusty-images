@@ -1,33 +1,10 @@
+mod handlers;
+
 use std::convert::Infallible;
 
-use serde::{Serialize, Deserialize};
-use warp::{Filter, multipart::FormData, Reply, Rejection, reply, hyper::StatusCode, reject::{self}};
+use handlers::{models::ErrorMessage, stats_handler};
+use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject};
 
-#[derive(Clone, Serialize, Deserialize)]
-struct ImageStats {
-    size: u64
-}
-
-#[derive(Serialize)]
-struct ErrorMessage {
-    message: String,
-}
-
-#[tokio::main]
-async fn main() {
-    let stats_route = warp::path!("stats")
-        .and(warp::post())
-        .and(warp::multipart::form().max_length(10_000_000))
-        .and_then(stats_handler);
-
-    warp::serve(stats_route.recover(handle_reject))
-        .run(([127, 0, 0, 1], 3030))
-        .await;
-}
-
-async fn stats_handler(form: FormData) -> Result<impl Reply, Rejection> {
-    Ok(reply::with_status(reply::json(&ImageStats{size: 2}), StatusCode::OK))
-}
 
 async fn handle_reject(rej: Rejection) -> Result<impl Reply, Infallible> {
     println!("{:?}", rej);
@@ -50,8 +27,21 @@ async fn handle_reject(rej: Rejection) -> Result<impl Reply, Infallible> {
         message = "Error on server side".to_string();
     }
 
-    Ok(reply::with_status(reply::json(
-        &ErrorMessage {
-            message: message.to_string()
-    }), status_code))
+    Ok(reply::with_status(reply::json(&ErrorMessage::new(&message)), status_code))
 }
+
+#[tokio::main]
+async fn main() {
+    let stats_route = warp::path!("stats")
+        .and(warp::post())
+        .and(warp::multipart::form().max_length(10_000_000))
+        .and_then(stats_handler);
+
+    let router = stats_route.recover(handle_reject);
+
+    warp::serve(router)
+        .run(([127, 0, 0, 1], 3030))
+        .await;
+}
+
+
