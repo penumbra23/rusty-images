@@ -1,41 +1,49 @@
-use std::{io::Cursor, fmt::Display};
 
-use warp::{multipart::{FormData, Part}, Reply, Rejection, reply, hyper::StatusCode, reject::{Reject, self}};
+
+use warp::{multipart::{FormData, Part}, Reply, Rejection, reply::{self, Response}, hyper::StatusCode, reject::{self, Reject}, http::HeaderValue};
 use futures::TryStreamExt;
-
 use bytes::BufMut;
-use image::{io::Reader as ImageReader, DynamicImage};
+
+
+
+use crate::image::{ImageResizeQuery, Image, ImageError, ImageFilter, OutputFormat};
 
 use self::models::ImageStats;
 pub mod models;
 
-#[derive(Clone, Debug)]
-pub enum ImageError {
-    InvalidFormat(String),
-    ReadError(String),
-}
-
-impl Display for ImageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "image err: {:?}", self)
-    }
-}
-
 impl Reject for ImageError {}
-
-struct ImageReadResult {
-    img_data: DynamicImage,
-    size: usize,
-    format: String,
-}
 
 pub async fn stats_handler(form: FormData) -> Result<impl Reply, Rejection> {
     let img = read_image(form).await?;
-    let stats = ImageStats::new(img.img_data.width(), img.img_data.height(), img.size,img.format);
+    let stats = ImageStats::new(img.img_data().width(), img.img_data().height(), img.size(), img.format().to_string());
     Ok(reply::with_status(reply::json(&stats), StatusCode::OK))
 }
 
-async fn read_image(form: FormData) -> Result<ImageReadResult, Rejection> {
+pub async fn resize_handler(width: u32, height: u32, form: FormData, params: ImageResizeQuery) -> Result<impl Reply, Rejection> {
+    let img = read_image(form).await?;
+
+    let filter = match params.filter_type {
+        Some(f) => ImageFilter::parse(&f)?,
+        None => ImageFilter::default(),
+    };
+
+    let resized_img = img.resize(width, height, filter, params.keep_aspect.unwrap());
+    
+    let format = match params.output_format {
+        Some(f) => OutputFormat::parse(&f)?,
+        None => OutputFormat::default(),
+    };
+
+    let mut data = Vec::new();
+    resized_img.write_to(&mut data, format)?;
+
+    let mut res = Response::new(data.into());
+    res.headers_mut().insert("Content-Type", HeaderValue::from_str(img.format()).unwrap());
+
+    Ok(reply::with_status(res, StatusCode::OK))
+}
+
+async fn read_image(form: FormData) -> Result<Image, Rejection> {
     let parts: Vec<Part> = form.try_collect().await.map_err(|e| {
         eprintln!("form error: {}", e);
         reject::custom(ImageError::InvalidFormat(e.to_string()))
@@ -70,23 +78,7 @@ async fn read_image(form: FormData) -> Result<ImageReadResult, Rejection> {
             reject::custom(ImageError::ReadError(String::from("error reading image")))
         })?;
 
-    let img_size = value.len();
+    let image_result = Image::parse(&value, &format)?;
 
-    let img = ImageReader::new(Cursor::new(value))
-        .with_guessed_format()
-        .map_err(|err| {
-            eprintln!("reading image error: {}", err);
-            reject::custom(ImageError::ReadError(String::from("error reading image")))
-        })?
-        .decode()
-        .map_err(|err| {
-            eprintln!("decoding image error: {}", err);
-            reject::custom(ImageError::ReadError(String::from("error decoding image")))
-        })?;
-
-    Ok(ImageReadResult {
-        format: format.to_string(),
-        img_data: img,
-        size: img_size,
-    })
+    Ok(image_result)
 }

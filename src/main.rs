@@ -1,12 +1,13 @@
 mod handlers;
+mod image;
 
 use std::convert::Infallible;
 
-use handlers::{models::ErrorMessage, stats_handler};
-use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject};
+use serde::de::DeserializeOwned;
+use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject, filters::BoxedFilter};
 
-use crate::handlers::ImageError;
-
+use crate::image::{ImageError, ImageResizeQuery};
+use crate::handlers::{models::ErrorMessage, stats_handler, resize_handler};
 
 async fn handle_reject(rej: Rejection) -> Result<impl Reply, Infallible> {
     println!("{:?}", rej);
@@ -38,6 +39,13 @@ async fn handle_reject(rej: Rejection) -> Result<impl Reply, Infallible> {
     Ok(reply::with_status(reply::json(&ErrorMessage::new(&message)), status_code))
 }
 
+fn optional_query<T: 'static+Default+Send+DeserializeOwned>() -> BoxedFilter<(T,)> {
+    warp::any()
+        .and(warp::query().or(warp::any().map(|| T::default())))
+        .unify()
+        .boxed()
+}
+
 #[tokio::main]
 async fn main() {
     let stats_route = warp::path!("stats")
@@ -45,7 +53,15 @@ async fn main() {
         .and(warp::multipart::form().max_length(10_000_000))
         .and_then(stats_handler);
 
-    let router = stats_route.recover(handle_reject);
+    let resize_route = warp::path!("resize" / u32 / u32)
+        .and(warp::post())
+        .and(warp::multipart::form().max_length(10_000_000))
+        .and(optional_query::<ImageResizeQuery>())
+        .and_then(resize_handler);
+
+    let router = stats_route
+        .or(resize_route)
+        .recover(handle_reject);
 
     warp::serve(router)
         .run(([127, 0, 0, 1], 3030))
