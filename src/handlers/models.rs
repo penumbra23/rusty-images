@@ -1,15 +1,16 @@
-use std::f32::consts::E;
-
-use serde::{Serialize, de::Error};
+use serde::Serialize;
 
 #[derive(Clone, Serialize)]
 pub struct ImageStats {
-    size: u64
+    size: usize,
+    width: u32,
+    height: u32,
+    format: String,
 }
 
 impl ImageStats {
-    pub fn new(size: u64) -> ImageStats {
-        ImageStats { size }
+    pub fn new(width: u32, height: u32, size: usize, format: String) -> ImageStats {
+        ImageStats { size, width, height, format }
     }
 }
 
