@@ -1,10 +1,9 @@
 
 
+use log::info;
 use warp::{multipart::{FormData, Part}, Reply, Rejection, reply::{self, Response}, hyper::StatusCode, reject::{self, Reject}, http::HeaderValue};
 use futures::TryStreamExt;
 use bytes::BufMut;
-
-
 
 use crate::image::{ImageResizeQuery, Image, ImageError, ImageFilter, OutputFormat};
 
@@ -14,14 +13,18 @@ pub mod models;
 impl Reject for ImageError {}
 
 pub async fn stats_handler(form: FormData) -> Result<impl Reply, Rejection> {
+    info!("Image stats");
+    
     let img = read_image(form).await?;
     let stats = ImageStats::new(img.img_data().width(), img.img_data().height(), img.size(), img.format().to_string());
     Ok(reply::with_status(reply::json(&stats), StatusCode::OK))
 }
 
 pub async fn resize_handler(width: u32, height: u32, form: FormData, params: ImageResizeQuery) -> Result<impl Reply, Rejection> {
-    let img = read_image(form).await?;
+    info!("Image resize: w({}), h({}), params({:?})", width, height, params);
 
+    let img = read_image(form).await?;
+    
     let filter = match params.filter_type {
         Some(f) => ImageFilter::parse(&f)?,
         None => ImageFilter::default(),
