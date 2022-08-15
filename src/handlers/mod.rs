@@ -5,7 +5,7 @@ use warp::{multipart::{FormData, Part}, Reply, Rejection, reply::{self, Response
 use futures::TryStreamExt;
 use bytes::BufMut;
 
-use crate::image::{ImageResizeQuery, Image, ImageError, ImageFilter, OutputFormat};
+use crate::image::{ImageResizeQuery, Image, ImageError, ImageFilter, OutputFormat, ImageOutputQuery};
 
 use self::models::ImageStats;
 pub mod models;
@@ -46,16 +46,40 @@ pub async fn resize_handler(width: u32, height: u32, form: FormData, params: Ima
     Ok(reply::with_status(res, StatusCode::OK))
 }
 
+pub async fn blur_handler(strength: f32, form: FormData, output_params: ImageOutputQuery) -> Result<impl Reply, Rejection> {
+    info!("Image blur: strength({})", strength);
+
+    if strength < 0.0 {
+        return Err(reject::custom(
+                ImageError::InvalidFormat(format!("strength param should be positive; supplied {}", strength))));
+    }
+
+    let img = read_image(form).await?;
+
+    let blurred_img = img.blur(strength);
+    
+    let format = match output_params.output_format {
+        Some(f) => OutputFormat::parse(&f)?,
+        None => OutputFormat::default(),
+    };
+
+    let mut data = Vec::new();
+    blurred_img.write_to(&mut data, format)?;
+
+    let mut res = Response::new(data.into());
+    res.headers_mut().insert("Content-Type", HeaderValue::from_str(img.format()).unwrap());
+
+    Ok(reply::with_status(res, StatusCode::OK))
+}
+
 async fn read_image(form: FormData) -> Result<Image, Rejection> {
-    let parts: Vec<Part> = form.try_collect().await.map_err(|e| {
-        eprintln!("form error: {}", e);
-        reject::custom(ImageError::InvalidFormat(e.to_string()))
+    let parts: Vec<Part> = form.try_collect().await.map_err(|err| {
+        reject::custom(ImageError::InvalidFormat(format!("read error: {}", err)))
     })?;
     
     let file = match parts.into_iter().find(|p| p.name() == "file") {
         Some(file) => file,
         None => {
-            eprintln!("file not found");
             return Err(reject::custom(ImageError::InvalidFormat(String::from("file not found in request"))))
         },
     };
@@ -64,7 +88,6 @@ async fn read_image(form: FormData) -> Result<Image, Rejection> {
     let format = match content_type {
         Some(file_type) => file_type,
         None => {
-            eprintln!("file type could not be determined");
             return Err(reject::custom(ImageError::InvalidFormat(String::from("file type could not be determined"))));
         }
     };
@@ -76,9 +99,8 @@ async fn read_image(form: FormData) -> Result<Image, Rejection> {
             async move { Ok(vec) }
         })
         .await
-        .map_err(|e| {
-            eprintln!("reading file error: {}", e);
-            reject::custom(ImageError::ReadError(String::from("error reading image")))
+        .map_err(|err| {
+            reject::custom(ImageError::ReadError(format!("{}", err)))
         })?;
 
     let image_result = Image::parse(&value, &format)?;

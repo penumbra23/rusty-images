@@ -7,8 +7,8 @@ use log::error;
 use serde::de::DeserializeOwned;
 use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject, filters::BoxedFilter};
 
-use crate::image::{ImageError, ImageResizeQuery};
-use crate::handlers::{models::ErrorMessage, stats_handler, resize_handler};
+use crate::image::{ImageError, ImageResizeQuery, ImageOutputQuery};
+use crate::handlers::{models::ErrorMessage, stats_handler, resize_handler, blur_handler};
 
 async fn handle_reject(err: Rejection) -> Result<impl Reply, Infallible> {
     error!("{:?}", err);
@@ -61,12 +61,19 @@ async fn main() {
         .and(optional_query::<ImageResizeQuery>())
         .and_then(resize_handler);
 
+    let blur_route = warp::path!("blur" / f32)
+        .and(warp::post())
+        .and(warp::multipart::form().max_length(10_000_000))
+        .and(optional_query::<ImageOutputQuery>())
+        .and_then(blur_handler);
+
     let log = warp::log::custom(|info| {
         log::info!("{} {} {} {:?}", info.method(), info.path(), info.status(), info.remote_addr());
     });
 
     let router = stats_route
         .or(resize_route)
+        .or(blur_route)
         .recover(handle_reject)
         .with(log);
     
