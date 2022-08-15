@@ -17,6 +17,17 @@ impl Display for ImageError {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct ImageOutputQuery {
+    pub output_format: Option<String>,
+}
+
+impl Default for ImageOutputQuery {
+    fn default() -> Self {
+        Self { output_format: Some(String::from("png")) }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ImageResizeQuery {
     pub keep_aspect: Option<bool>,
     pub output_format: Option<String>,
@@ -40,15 +51,13 @@ impl Image {
         let dyn_img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|err| {
-            eprintln!("reading image error: {}", err);
-            ImageError::ReadError(String::from("error reading image"))
+            ImageError::ReadError(format!("error reading image: {}", err))
         })?
         .decode()
         .map_err(|err| {
-            eprintln!("decoding image error: {}", err);
-            ImageError::ReadError(String::from("error decoding image"))
+            ImageError::ReadError(format!("error reading image: {}", err))
         })?;
-
+        
         Ok(Image {
             format: format.to_string(),
             img_data: dyn_img,
@@ -77,11 +86,15 @@ impl Image {
         Image { img_data: resized_img, size, format: self.format.clone() }
     }
 
+    pub fn blur(&self, strength: f32) -> Image {
+        let blurred_img = self.img_data.blur(strength);
+        Image { img_data: blurred_img, size: self.size, format: self.format.clone() }
+    }
+
     pub fn write_to(&self, buf: &mut Vec<u8>, format: OutputFormat) -> Result<(), ImageError> {
         self.img_data.write_to(&mut Cursor::new(buf), format.format)
         .map_err(|err| {
-            eprintln!("form error: {}", err);
-            ImageError::ResizeError(err.to_string())
+            ImageError::ResizeError(format!("image write error: {}", err))
         })?;
         Ok(())
     }
