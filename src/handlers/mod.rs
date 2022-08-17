@@ -30,18 +30,19 @@ pub async fn resize_handler(width: u32, height: u32, form: FormData, params: Ima
         None => ImageFilter::default(),
     };
 
-    let resized_img = img.resize(width, height, filter, params.keep_aspect.unwrap());
-    
     let format = match params.output_format {
         Some(f) => OutputFormat::parse(&f)?,
         None => OutputFormat::default(),
     };
 
+    let resized_img = img.resize(width, height, filter, params.keep_aspect.unwrap());
+    
     let mut data = Vec::new();
-    resized_img.write_to(&mut data, format)?;
+    resized_img.write_to(&mut data, &format)?;
 
     let mut res = Response::new(data.into());
-    res.headers_mut().insert("Content-Type", HeaderValue::from_str(img.format()).unwrap());
+    let content_type = format!("image/{}", <OutputFormat as Into<String>>::into(format));
+    res.headers_mut().insert("Content-Type", HeaderValue::from_str(content_type.as_str()).unwrap());
 
     Ok(reply::with_status(res, StatusCode::OK))
 }
@@ -56,18 +57,19 @@ pub async fn blur_handler(strength: f32, form: FormData, output_params: ImageOut
 
     let img = read_image(form).await?;
 
-    let blurred_img = img.blur(strength);
-    
     let format = match output_params.output_format {
         Some(f) => OutputFormat::parse(&f)?,
         None => OutputFormat::default(),
     };
 
+    let blurred_img = img.blur(strength);
+    
     let mut data = Vec::new();
-    blurred_img.write_to(&mut data, format)?;
+    blurred_img.write_to(&mut data, &format)?;
 
     let mut res = Response::new(data.into());
-    res.headers_mut().insert("Content-Type", HeaderValue::from_str(img.format()).unwrap());
+    let content_type = format!("image/{}", <OutputFormat as Into<String>>::into(format));
+    res.headers_mut().insert("Content-Type", HeaderValue::from_str(content_type.as_str()).unwrap());
 
     Ok(reply::with_status(res, StatusCode::OK))
 }

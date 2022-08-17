@@ -91,8 +91,8 @@ impl Image {
         Image { img_data: blurred_img, size: self.size, format: self.format.clone() }
     }
 
-    pub fn write_to(&self, buf: &mut Vec<u8>, format: OutputFormat) -> Result<(), ImageError> {
-        self.img_data.write_to(&mut Cursor::new(buf), format.format)
+    pub fn write_to(&self, buf: &mut Vec<u8>, format: &OutputFormat) -> Result<(), ImageError> {
+        self.img_data.write_to(&mut Cursor::new(buf), format.format.clone())
         .map_err(|err| {
             ImageError::ResizeError(format!("image write error: {}", err))
         })?;
@@ -131,6 +131,17 @@ impl OutputFormat {
             "jpeg" => Ok(OutputFormat{format: ImageOutputFormat::Jpeg(100)}),
             "gif" => Ok(OutputFormat{format: ImageOutputFormat::Gif}),
             _ => Err(ImageError::InvalidFormat(format!("can't convert to {}", str)))
+        }
+    }
+}
+
+impl Into<String> for OutputFormat {
+    fn into(self) -> String {
+        match self.format {
+            ImageOutputFormat::Png => "png".to_owned(),
+            ImageOutputFormat::Jpeg(_) => "jpeg".to_owned(),
+            ImageOutputFormat::Gif => "gif".to_owned(),
+            _ => unreachable!()
         }
     }
 }
