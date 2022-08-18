@@ -10,42 +10,6 @@ use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject, filters::
 use crate::image::{ImageError, ImageResizeQuery, ImageOutputQuery};
 use crate::handlers::{models::ErrorMessage, stats_handler, resize_handler, blur_handler, rotate_handler};
 
-async fn handle_reject(err: Rejection) -> Result<impl Reply, Infallible> {
-    error!("{:?}", err);
-
-    let message;
-    let status_code;
-
-    if err.is_not_found() {
-        status_code = StatusCode::NOT_FOUND;
-        message = "Resource not found".to_string();
-    } else if err.find::<reject::MethodNotAllowed>().is_some() {
-        status_code = StatusCode::METHOD_NOT_ALLOWED;
-        message = "Method now allowed".to_string();
-    } else if let Some(header_err) = err.find::<reject::InvalidHeader>() {
-        status_code = StatusCode::BAD_REQUEST;
-        message = format!("Bad request: {}", header_err);
-    } else if let Some(payload_err) = err.find::<reject::PayloadTooLarge>() {
-        status_code = StatusCode::BAD_REQUEST;
-        message = format!("Bad request: {}", payload_err);
-    } else if let Some(image_err) = err.find::<ImageError>() {
-        status_code = StatusCode::BAD_REQUEST;
-        message = image_err.to_string();
-    } else {
-        status_code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = "Error on server side".to_string();
-    }
-
-    Ok(reply::with_status(reply::json(&ErrorMessage::new(&message)), status_code))
-}
-
-fn optional_query<T: 'static+Default+Send+DeserializeOwned>() -> BoxedFilter<(T,)> {
-    warp::any()
-        .and(warp::query().or(warp::any().map(|| T::default())))
-        .unify()
-        .boxed()
-}
-
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -89,4 +53,38 @@ async fn main() {
         .await;
 }
 
+async fn handle_reject(err: Rejection) -> Result<impl Reply, Infallible> {
+    error!("{:?}", err);
 
+    let message;
+    let status_code;
+
+    if err.is_not_found() {
+        status_code = StatusCode::NOT_FOUND;
+        message = "Resource not found".to_string();
+    } else if err.find::<reject::MethodNotAllowed>().is_some() {
+        status_code = StatusCode::METHOD_NOT_ALLOWED;
+        message = "Method now allowed".to_string();
+    } else if let Some(header_err) = err.find::<reject::InvalidHeader>() {
+        status_code = StatusCode::BAD_REQUEST;
+        message = format!("Bad request: {}", header_err);
+    } else if let Some(payload_err) = err.find::<reject::PayloadTooLarge>() {
+        status_code = StatusCode::BAD_REQUEST;
+        message = format!("Bad request: {}", payload_err);
+    } else if let Some(image_err) = err.find::<ImageError>() {
+        status_code = StatusCode::BAD_REQUEST;
+        message = image_err.to_string();
+    } else {
+        status_code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Error on server side".to_string();
+    }
+
+    Ok(reply::with_status(reply::json(&ErrorMessage::new(&message)), status_code))
+}
+
+fn optional_query<T: 'static+Default+Send+DeserializeOwned>() -> BoxedFilter<(T,)> {
+    warp::any()
+        .and(warp::query().or(warp::any().map(|| T::default())))
+        .unify()
+        .boxed()
+}
