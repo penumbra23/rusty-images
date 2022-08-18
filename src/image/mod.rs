@@ -8,6 +8,7 @@ pub enum ImageError {
     InvalidFormat(String),
     ReadError(String),
     ResizeError(String),
+    RotateError(String),
 }
 
 impl Display for ImageError {
@@ -91,6 +92,17 @@ impl Image {
         Image { img_data: blurred_img, size: self.size, format: self.format.clone() }
     }
 
+    pub fn rotate(&self, angle: u32) -> Result<Image, ImageError> {
+        let rotated_img = match angle {
+            90 => self.img_data.rotate90(),
+            180 => self.img_data.rotate180(),
+            270 => self.img_data.rotate270(),
+            _ => return Err(ImageError::RotateError(format!("Invalid angle: {}", angle))),
+        };
+
+        Ok(Image { img_data: rotated_img, size: self.size, format: self.format.clone() })
+    }
+
     pub fn write_to(&self, buf: &mut Vec<u8>, format: &OutputFormat) -> Result<(), ImageError> {
         self.img_data.write_to(&mut Cursor::new(buf), format.format.clone())
         .map_err(|err| {
@@ -98,6 +110,7 @@ impl Image {
         })?;
         Ok(())
     }
+    
 }
 
 pub struct ImageFilter {

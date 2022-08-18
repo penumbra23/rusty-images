@@ -1,5 +1,7 @@
 
 
+use std::process::Output;
+
 use log::info;
 use warp::{multipart::{FormData, Part}, Reply, Rejection, reply::{self, Response}, hyper::StatusCode, reject::{self, Reject}, http::HeaderValue};
 use futures::TryStreamExt;
@@ -20,6 +22,21 @@ pub async fn stats_handler(form: FormData) -> Result<impl Reply, Rejection> {
     Ok(reply::with_status(reply::json(&stats), StatusCode::OK))
 }
 
+pub async fn rotate_handler(angle: u32, form: FormData, output_params: ImageOutputQuery) -> Result<impl Reply, Rejection> {
+    info!("Image rotate: angle {}", angle);
+
+    let img = read_image(form).await?;
+
+    let format = match output_params.output_format {
+        Some(f) => OutputFormat::parse(&f)?,
+        None => OutputFormat::default(),
+    };
+
+    let rotated_img = img.rotate(angle)?;
+    
+    res(rotated_img, format)
+}
+
 pub async fn resize_handler(width: u32, height: u32, form: FormData, params: ImageResizeQuery) -> Result<impl Reply, Rejection> {
     info!("Image resize: w({}), h({}), params({:?})", width, height, params);
 
@@ -37,14 +54,7 @@ pub async fn resize_handler(width: u32, height: u32, form: FormData, params: Ima
 
     let resized_img = img.resize(width, height, filter, params.keep_aspect.unwrap());
     
-    let mut data = Vec::new();
-    resized_img.write_to(&mut data, &format)?;
-
-    let mut res = Response::new(data.into());
-    let content_type = format!("image/{}", <OutputFormat as Into<String>>::into(format));
-    res.headers_mut().insert("Content-Type", HeaderValue::from_str(content_type.as_str()).unwrap());
-
-    Ok(reply::with_status(res, StatusCode::OK))
+    res(resized_img, format)
 }
 
 pub async fn blur_handler(strength: f32, form: FormData, output_params: ImageOutputQuery) -> Result<impl Reply, Rejection> {
@@ -64,14 +74,7 @@ pub async fn blur_handler(strength: f32, form: FormData, output_params: ImageOut
 
     let blurred_img = img.blur(strength);
     
-    let mut data = Vec::new();
-    blurred_img.write_to(&mut data, &format)?;
-
-    let mut res = Response::new(data.into());
-    let content_type = format!("image/{}", <OutputFormat as Into<String>>::into(format));
-    res.headers_mut().insert("Content-Type", HeaderValue::from_str(content_type.as_str()).unwrap());
-
-    Ok(reply::with_status(res, StatusCode::OK))
+    res(blurred_img, format)
 }
 
 async fn read_image(form: FormData) -> Result<Image, Rejection> {
@@ -108,4 +111,15 @@ async fn read_image(form: FormData) -> Result<Image, Rejection> {
     let image_result = Image::parse(&value, &format)?;
 
     Ok(image_result)
+}
+
+fn res(image: Image, format: OutputFormat) -> Result<impl Reply, Rejection> {
+    let mut data = Vec::new();
+    image.write_to(&mut data, &format)?;
+
+    let mut res = Response::new(data.into());
+    let content_type = format!("image/{}", <OutputFormat as Into<String>>::into(format));
+    res.headers_mut().insert("Content-Type", HeaderValue::from_str(content_type.as_str()).unwrap());
+
+    Ok(reply::with_status(res, StatusCode::OK))
 }
