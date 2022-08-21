@@ -2,7 +2,9 @@ mod handlers;
 mod image;
 
 use std::convert::Infallible;
+use std::net::SocketAddr;
 
+use clap::Parser;
 use log::error;
 use serde::de::DeserializeOwned;
 use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject, filters::BoxedFilter};
@@ -10,30 +12,47 @@ use warp::{Filter, Reply, Rejection, reply, hyper::StatusCode, reject, filters::
 use crate::image::{ImageError, ImageResizeQuery, ImageOutputQuery};
 use crate::handlers::{models::ErrorMessage, stats_handler, resize_handler, blur_handler, rotate_handler};
 
+const MAX_UPLOAD_SIZE: u64 = 10_000_000;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct ServerArgs {
+   #[clap(short, long, value_parser)]
+   addr: String,
+
+   #[clap(short, long, value_parser)]
+   log_level: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let args = ServerArgs::parse();
+
+    let log_level = args.log_level.unwrap_or(String::from("INFO")).parse().expect("Wrong log level supplied.");
+    env_logger::builder().filter_level(log_level).init();
+
+    let addr: SocketAddr = args.addr.parse().unwrap_or("0.0.0.0:8080".parse().unwrap());
 
     let stats_route = warp::path!("stats")
         .and(warp::post())
-        .and(warp::multipart::form().max_length(10_000_000))
+        .and(warp::multipart::form().max_length(MAX_UPLOAD_SIZE))
         .and_then(stats_handler);
 
     let resize_route = warp::path!("resize" / u32 / u32)
         .and(warp::post())
-        .and(warp::multipart::form().max_length(10_000_000))
+        .and(warp::multipart::form().max_length(MAX_UPLOAD_SIZE))
         .and(optional_query::<ImageResizeQuery>())
         .and_then(resize_handler);
 
     let blur_route = warp::path!("blur" / f32)
         .and(warp::post())
-        .and(warp::multipart::form().max_length(10_000_000))
+        .and(warp::multipart::form().max_length(MAX_UPLOAD_SIZE))
         .and(optional_query::<ImageOutputQuery>())
         .and_then(blur_handler);
 
     let rotate_route = warp::path!("rotate" / u32)
         .and(warp::post())
-        .and(warp::multipart::form().max_length(10_000_000))
+        .and(warp::multipart::form().max_length(MAX_UPLOAD_SIZE))
         .and(optional_query::<ImageOutputQuery>())
         .and_then(rotate_handler);
 
@@ -47,9 +66,9 @@ async fn main() {
         .or(rotate_route)
         .recover(handle_reject)
         .with(log);
-    
+
     warp::serve(router)
-        .run(([127, 0, 0, 1], 3030))
+        .run(addr)
         .await;
 }
 
