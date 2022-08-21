@@ -18,7 +18,7 @@ const MAX_UPLOAD_SIZE: u64 = 10_000_000;
 #[clap(author, version, about, long_about = None)]
 struct ServerArgs {
    #[clap(short, long, value_parser)]
-   addr: String,
+   addr: Option<String>,
 
    #[clap(short, long, value_parser)]
    log_level: Option<String>,
@@ -31,7 +31,11 @@ async fn main() {
     let log_level = args.log_level.unwrap_or(String::from("INFO")).parse().expect("Wrong log level supplied.");
     env_logger::builder().filter_level(log_level).init();
 
-    let addr: SocketAddr = args.addr.parse().unwrap_or("0.0.0.0:8080".parse().unwrap());
+    let default_addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
+    let addr: SocketAddr = match args.addr {
+        Some(s) => s.parse().unwrap_or(default_addr),
+        None => default_addr,
+    };
 
     let stats_route = warp::path!("stats")
         .and(warp::post())
