@@ -12,7 +12,7 @@ cargo run
 or run with Docker
 
 ```
-docker run -it -p 3000:3000 penumbra23/rusty-images
+docker run -it -p 8080:8080 penumbra23/rusty-images
 ```
 
 ## API
